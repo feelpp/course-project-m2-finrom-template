@@ -1,235 +1,181 @@
-= Learning Plan — Thermal Fin ROM (HPC) with Containers, Slurm & Surrogates
-:navtitle: Learning Plan — Components & Sessions
-:description: Short intros to each component (with examples) + a 5×2h learning plan mapped to the starter repo.
+= Assignment — Thermal Fin ROM (HPC) with Containers, Slurm & Surrogates
+:navtitle: Assignment — Thermal Fin ROM
+:description: Project brief for M2: build a reproducible HPC pipeline (Docker→GHCR→Apptainer→Slurm) to generate data, train a surrogate, quantify uncertainty, and package an inference CLI.
 :icons: font
 :source-highlighter: highlight.js
 :stem: latexmath
-:page-tags: hpc, containers, docker, apptainer, slurm, dvc, mlflow, feelpp, rom
+:page-tags: assignment, m2, hpc, containers, apptainer, slurm, dvc, mlflow, feelpp, rom
 
-== Overview
-We teach the full pipeline end-to-end, then deepen each skill *just-in-time*. Students work from a starter repo with a thin-slice MVP (synthetic data) and replace the generator by a Feel++ call later.
+== 0. Overview
+You will implement an end-to-end, **reproducible HPC pipeline** that learns a **surrogate (ROM)** for the **2D thermal fin** problem. The pipeline must:
 
-== Sessions (5 × 2h) — outcomes & deliverables
-[cols="2,4,4", options="header"]
-|===
-|Session |Outcomes |Deliverables
+. Generate a dataset via an **ensemble campaign** (Slurm job arrays).
+. Aggregate outputs to a single **Parquet** table.
+. Train and evaluate a **surrogate model** (baseline: **Gaussian Process**; group-specific variant allowed).
+. Track experiments (**MLflow**) and version data/pipeline (**DVC**).
+. Package an **inference CLI** that returns **mean** and **uncertainty (std)** for a given parameter vector.
 
-|S1 — MVP (local)
-|Run the thin slice: params → generate → aggregate → train GP → infer. Learn basic Git & Python hygiene.
-|Screenshot/log of a successful run. `data/processed/train.parquet`. `results/runs/0/gp_model.joblib`.
-
-|S2 — Containers & CI
-|Write/inspect Dockerfile; build/run locally; tag `v0.1.0`; GH Actions builds & pushes to GHCR.
-|Green CI. Image visible on GHCR. Short note on image size & non-root.
-
-|S3 — HPC runtime
-|Pull Docker image as Apptainer `.sif`; Slurm 101; run an array to generate N cases; aggregate on cluster.
-|`data/raw/case_*.json` from the array. `train.parquet` produced on cluster.
-
-|S4 — Pipeline & tracking
-|DVC stages (generate→aggregate→train→evaluate); MLflow logging in `fit_gp.py`; compare runs.
-|`mlops/dvc.yaml`; `results/mlruns/*` or table of runs; best run selected.
-
-|S5 — Model, packaging & report
-|Hyperparam sweep; pick best; inference CLI; (opt) package the model in a new image tag; write short report.
-|Final repo + 2–3 page report (RMSE, calibration plot, timings). Final image tag (e.g., `v1.0.0`).
-|===
-
-[NOTE]
+[IMPORTANT]
 ====
-**Same dataset/infra for all.** Different modeling method per group (e.g., GP, RF/XGB, SVR/MLP, PCE, RB). Everyone keeps the same pipeline and evaluation.
+**Common dataset & infrastructure**, **different method per group** (to compare approaches fairly).
 ====
 
-== Short intros to components (with minimal examples)
+== 1. Learning goals
+* Engineer a containerized research workflow: **Docker → GHCR → Apptainer** (cluster).
+* Orchestrate ensembles with **Slurm** (`--array`, `--dependency`).
+* Build reproducible pipelines with **DVC**; log metrics/artifacts with **MLflow** (file backend).
+* Train a small-N surrogate and **quantify uncertainty**; report accuracy & calibration.
+* Publish a final **image** and a **CLI** suitable for batch inference.
 
-=== 1) Linux shell & Git (10′)
-*What/Why.* Run commands, manage code history, collaborate.  
-*Must-know.* `git clone`, branch/PR, `.gitignore`.
+== 2. Problem (short spec)
+Thermal fin, steady-state conduction with piecewise-constant conductivities and convective boundary conditions.
 
+*Parameters*: latexmath:[$\mu=(k_1,k_2,k_3,k_4,\mathrm{Bi})$], with ranges:
+latexmath:[$k_i\in[0.1,10.0],\ \mathrm{Bi}\in[0.01,1.0]$].
+*QoI*: average root temperature latexmath:[$T_{\text{root}}(\mu)=\int_{\Gamma_{\text{root}}}u\,ds$].
+
+Use the **starter generator (synthetic)** to validate the pipeline, then **replace** it with your **Feel++ wrapper** (recommended) when ready.
+
+== 3. What we provide
+* A **template repository** (starter) with:
+  - `containers/Dockerfile`, `.dockerignore`
+  - `.github/workflows/docker-build-push.yml` (build on tag to **GHCR**)
+  - `hpc/*.sbatch` (arrays & deps)
+  - `src/pipeline/`:
+    * `generate/` (LHS params + synthetic `generate_point.py`)
+    * `aggregate/merge.py`
+    * `train/fit_gp.py` (GP baseline; MLflow optional)
+    * `infer/cli.py` (returns mean/std)
+  - `mlops/dvc.yaml`, `mlops/mlflow.conf`
+  - `Makefile` (`mvp`, `gen`, `agg`, `train`, `best`, `infer`)
+* A **problem statement** for the 2D fin (steady).
+
+== 4. What you must deliver
+. **Working pipeline** (local thin slice + HPC):  
+  Docker image (buildable), Apptainer `.sif` (pullable), Slurm arrays (data generation), aggregated Parquet, training, evaluation.
+. **Surrogate model** (one per group) with **UQ**:
+  - Baseline GP is included; groups may choose one primary method:
+    * RF/XGBoost, SVR, MLP, PCE (sparse), RB (POD–Galerkin), Multi-fidelity GP, or Active Learning.
+. **Tracking & reproducibility**:
+  - MLflow runs (metrics + model artifacts).
+  - DVC stages (generate→aggregate→train→evaluate) runnable with `dvc repro`.
+. **Inference CLI**:
+  - `python -m pipeline.infer.cli --theta '{"k1":..,"k2":..,"k3":..,"k4":..,"Bi":..}'`
+  - Prints `{"mean": <float>, "std": <float>}`.
+. **Final image tag** on GHCR (e.g., `v1.0.0`) containing or mounting the trained model.
+. **Short report (2–3 pages)**:
+  - Data summary, model choice, hyper-params, **RMSE/NLL**, **calibration (coverage 95%)**, timings (train & infer), and limitations.
+
+== 5. Technologies & constraints
+* **Containers**: Docker (or Podman), non-root runtime. Registry: **GHCR** (tag on release).  
+* **HPC containers**: **Apptainer** (user-space).  
+* **Scheduler**: **Slurm** arrays + dependencies (`afterok`).  
+* **Pipeline**: **DVC** (file backend; remote optional).  
+* **Tracking**: **MLflow** (file backend; no server required).  
+* **Data**: JSON shards → **Parquet** (pyarrow).  
+* **Code**: Python 3.11, Poetry/uv, scikit-learn, pandas, joblib.  
+* **Compute budget** (indicative): N≈300 train + 60 valid + 100 test (adjust to quota).  
+* **Repro**: set seeds; pin threads on CPU (`OMP_NUM_THREADS=1`).
+
+== 6. Milestones & deadlines
+[cols="1,4,2", options="header"]
+|===
+|Milestone |Expected artifacts |Due
+
+|M1 — MVP local
+|`make mvp` runs end-to-end; `train.parquet` + `results/runs/0/gp_model.joblib`; 10-line log/screenshot
+|Wk 1, end
+
+|M2 — Image & CI
+|Image built locally; tag `v0.1.0` → CI pushes to GHCR; link to GHCR image
+|Wk 2, mid
+
+|M3 — HPC generation
+|`.sif` pulled; array generated N cases; aggregated Parquet on cluster
+|Wk 3, end
+
+|M4 — Tracking & training
+|`mlops/dvc.yaml` valid; MLflow runs; best run identified
+|Wk 4, mid
+
+|M5 — Packaging & report
+|Final tag `v1.0.0`; CLI inference works; PDF report (2–3 pages)
+|Wk 5, end
+|===
+
+== 7. Repository rules (GitHub Classroom)
+* Template repository: `course-project-m2-YYYYsX-finrom-template` (provided).
+* Student repo name template: `course-project-m2-YYYYsX-finrom-<METHOD>-g<TEAM>`.
+* Visibility: **Private**. Use **branches/PRs**; CI must be **green** before merge.
+* Include **README** with exact commands to reproduce your results.
+
+== 8. Grading rubric (indicative)
+* **Engineering (20%)** — container hygiene, GHCR release, Apptainer run, Slurm arrays/deps.
+* **Data pipeline (15%)** — ensemble produced, aggregation OK, DVC stages runnable.
+* **Modeling (35%)** — surrogate correctness & stability, **RMSE/NLL**, **uncertainty calibration (coverage)**.
+* **Tracking & reproducibility (15%)** — MLflow runs, seeds, documented commands, readme clarity.
+* **Packaging & report (15%)** — inference CLI works; 2–3 page report with parity & calibration plots, timings.
+
+== 9. Group methods — pick one primary
+* **GP** (baseline; native UQ).  
+* **RF/XGBoost** (fast, robust; UQ via quantile or bootstrap + conformal).  
+* **SVR (RBF)** or **MLP** (UQ via ensembles or MC dropout + conformal).  
+* **PCE (sparse)** (interpretable; Sobol indices).  
+* **RB (POD–Galerkin)** (projection ROM; online timing + estimator or x-val).  
+* **Multi-fidelity GP** (coarse + few fine samples).  
+* **Active learning** (variance/EI acquisition).
+
+== 10. Acceptance checks (must pass)
+- [ ] `docker build` succeeds; `docker run … --help` prints usage.  
+- [ ] Tagging `v0.x.y` triggers CI and pushes to GHCR.  
+- [ ] `apptainer pull docker://…:tag` produces a `.sif` that runs.  
+- [ ] `sbatch` array creates `data/raw/case_*.json`; aggregation writes `data/processed/train.parquet`.  
+- [ ] Training logs metrics; a model artifact exists; best run identified.  
+- [ ] CLI returns `{"mean": …, "std": …}` for a valid `--theta`.  
+- [ ] Short report submitted; plots included; commands reproducible.
+
+== 11. Academic integrity & teamwork
+* Work in **teams of 2–3**. You may consult public docs, but your code, configs, and report must be your own.  
+* Cite any external code or manuscripts. Plagiarism = 0.  
+* Each PR should have meaningful messages; use issues for task tracking.
+
+== 12. Getting started (quick commands)
 [source,bash]
 ----
-git clone https://github.com/ORG/REPO.git
-cd REPO
-git switch -c feat/mvp
-git add -A && git commit -m "MVP local slice" && git push --set-upstream origin feat/mvp
-----
-
-=== 2) Python project hygiene (Poetry/uv) (10′)
-*What/Why.* Reproducible deps, `src/` layout, dev tooling.  
-*Try now (local).*
-[source,bash]
-----
-poetry install
-poetry run python -m pipeline.generate.make_params --n 60 --out data/params.jsonl
-poetry run python -m pipeline.generate.run_many_local --params data/params.jsonl --outdir data/raw/
-poetry run python -m pipeline.aggregate.merge --out data/processed/train.parquet
-poetry run python -m pipeline.train.fit_gp --train data/processed/train.parquet --outdir results/runs/0
-----
-
-=== 3) Containers — Docker (15′)
-*What/Why.* Same environment everywhere; ship code + deps.  
-*Key ideas.* Dockerfile, `.dockerignore`, non-root, tags.
-
-[source,bash]
-----
-docker build -f containers/Dockerfile -t ghcr.io/ORG/REPO:local .
-docker run --rm -v $PWD:/app ghcr.io/ORG/REPO:local python -m pipeline.infer.cli --help
-----
-
-=== 4) Registry — GHCR (10′)
-*What/Why.* Immutable images addressable from HPC.  
-*Try now (after testing local build).*
-[source,bash]
-----
-docker tag ghcr.io/ORG/REPO:local ghcr.io/ORG/REPO:v0.1.0
-docker login ghcr.io
-docker push ghcr.io/ORG/REPO:v0.1.0
-----
-
-=== 5) HPC containers — Apptainer (Singularity) (15′)
-*What/Why.* Pull & run Docker images without root on clusters.  
-*Try on cluster.*
-[source,bash]
-----
-module load apptainer
-apptainer pull --name app.sif docker://ghcr.io/ORG/REPO:v0.1.0
-apptainer run app.sif python -m pipeline.train.fit_gp --help
-# bind scratch if needed:
-apptainer run --bind $SCRATCH:/scratch app.sif python -m pipeline.aggregate.merge --out data/processed/train.parquet
-----
-
-=== 6) Batch scheduling — Slurm (20′)
-*What/Why.* Parallel ensembles via arrays; DAG via dependencies.  
-*Minimal array (from `hpc/generate_array.sbatch`).*
-[source,bash]
-----
-#!/bin/bash
-#SBATCH -J fin-gen
-#SBATCH --array=0-299
-#SBATCH -c 2
-#SBATCH -t 00:20:00
-module load apptainer
-IDX=${SLURM_ARRAY_TASK_ID}
-srun apptainer run app.sif python -m pipeline.generate.generate_point \
-  --params data/params.jsonl --index ${IDX} --out data/raw/case_${IDX}.json
-# submit & monitor
-sbatch hpc/generate_array.sbatch
-squeue -u $USER
-----
-
-=== 7) Data pipeline — DVC (10′)
-*What/Why.* “Git for data & stages”; reproduce and sync artifacts.  
-*Stages file (`mlops/dvc.yaml`) + repro/push.*
-[source,bash]
-----
-dvc init
-dvc repro
-dvc push   # requires remote (S3/SSH/shared FS)
-----
-
-=== 8) Experiment tracking — MLflow (10′)
-*What/Why.* Log params/metrics/artifacts per run (file backend).  
-*Inside code (already in `fit_gp.py`).*
-[source,python]
-----
-import mlflow
-mlflow.set_tracking_uri("file:///app/results/mlruns")
-with mlflow.start_run():
-    mlflow.log_params({"model":"GP","kernel":"Matern52"})
-    # ... train ...
-    mlflow.log_metric("rmse_valid", rmse)
-    mlflow.log_artifact("gp_model.joblib")
-----
-
-=== 9) Data formats — JSONL → Parquet (5′)
-*What/Why.* Shard small JSON lines; merge to a columnar table.  
-*Already wired in* `pipeline/aggregate/merge.py`.
-
-=== 10) Baseline surrogate — Gaussian Process (10′)
-*What/Why.* Strong small-N regression + uncertainty.  
-*Minimal call.* (in `pipeline/train/fit_gp.py`)
-[source,python]
-----
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
-gp = GaussianProcessRegressor(ConstantKernel(1.0)*Matern(nu=2.5)+WhiteKernel(1e-4),
-                              normalize_y=True, n_restarts_optimizer=3, random_state=42)
-gp.fit(Xtr, ytr); mean, std = gp.predict(Xva, return_std=True)
-----
-
-=== 11) Optional — CI with GitHub Actions (10′)
-*What/Why.* Reproducible builds on tag; publish to GHCR.  
-*File:* `.github/workflows/docker-build-push.yml` (already included).
-
-=== 12) Optional — Feel++ integration (15′)
-*What/Why.* Replace synthetic generator by the PDE solver.  
-*Stub (where to plug):* `pipeline/generate/generate_point.py → simulate_fin(theta)`; write `{case_id, k1..k4, Bi, QoI}` JSON.
-
-== Labs mapped to sessions (commands you can copy/paste)
-
-=== S1 — Local thin-slice
-[source,bash]
-----
+# Local thin slice
 python -m pipeline.generate.make_params --n 60 --out data/params.jsonl
 python -m pipeline.generate.run_many_local --params data/params.jsonl --outdir data/raw/
 python -m pipeline.aggregate.merge --out data/processed/train.parquet
 python -m pipeline.train.fit_gp --train data/processed/train.parquet --outdir results/runs/0
 python -m pipeline.infer.cli --modeldir results/runs/0 --theta '{"k1":1,"k2":1,"k3":1,"k4":1,"Bi":0.1}'
-----
 
-=== S2 — Container + CI
-[source,bash]
-----
+# Build & publish image (CI on tag)
 docker build -f containers/Dockerfile -t ghcr.io/ORG/REPO:local .
-docker run --rm ghcr.io/ORG/REPO:local python -m pipeline.infer.cli --help
-git tag v0.1.0 && git push origin v0.1.0   # triggers GH Actions → GHCR
-----
+git tag v0.1.0 && git push origin v0.1.0
 
-=== S3 — Apptainer + Slurm arrays
-[source,bash]
-----
+# On the cluster
 module load apptainer
 apptainer pull --name app.sif docker://ghcr.io/ORG/REPO:v0.1.0
 sbatch hpc/generate_array.sbatch
 sbatch hpc/aggregate.sbatch
-----
-
-=== S4 — DVC & MLflow
-[source,bash]
-----
-dvc init
-dvc repro
-mlflow ui --backend-store-uri file://$PWD/results/mlruns   # optional local UI
-----
-
-=== S5 — Sweep, select best, package
-[source,bash]
-----
 sbatch hpc/train_array.sbatch
-sbatch hpc/evaluate.sbatch  # writes results/best_model_dir.txt
-apptainer run app.sif python -m pipeline.infer.cli \
-  --modeldir $(cat results/best_model_dir.txt) \
-  --theta '{"k1":2.0,"k2":0.5,"k3":4.0,"k4":1.5,"Bi":0.2}'
-# (opt) rebuild/push a "v1.0.0" image that includes the trained model bundle
+sbatch hpc/evaluate.sbatch
 ----
 
-== Assessment (suggested)
-- *Engineering (20%)* — container hygiene, GHCR release, Apptainer run, Slurm array.
-- *Data pipeline (15%)* — ensemble produced, aggregation OK, DVC stages valid.
-- *Modeling (35%)* — metrics (RMSE/NLL), uncertainty *calibration* plot, rationale.
-- *Tracking & repro (15%)* — MLflow runs, seeds, exact commands.
-- *Packaging & report (15%)* — inference CLI works; 2–3 pages with plots and timings.
+== 13. Feel++ integration (recommended)
+Replace the synthetic generator by your Feel++ run:
 
-== Tips & pitfalls
-- Pin threads on CPU (`export OMP_NUM_THREADS=1`) for reproducibility.
-- Keep per-case outputs tiny (one row per case) to speed up aggregation.
-- Start with 2D PDE (fast), keep 3D as demo or high-fidelity tier.
-- Always keep a **synthetic fallback** so no one is blocked by the PDE wrapper.
+. Build parameterized config/mesh from latexmath:[$\mu$].
+. Solve the steady fin problem.
+. Post-process latexmath:[$T_{\text{root}}=\int_{\Gamma_{\text{root}}}u\,ds$].
+. Write one JSON line per case: `{case_id, k1..k4, Bi, QoI}`.
 
-== Ready-to-try checklist
-- [ ] Local MVP runs end-to-end.  
-- [ ] Image built & pushed to GHCR on tag.  
-- [ ] Apptainer `.sif` pulled and runs on cluster.  
-- [ ] Slurm array generated N cases; Parquet aggregated.  
-- [ ] MLflow shows runs; best model selected.  
-- [ ] Inference CLI returns `mean/std` for any parameter vector.
+[NOTE]
+====
+If cluster time is tight: keep 2D as default. A small **3D** variant is allowed for demos or multi-fidelity (few high-fidelity points).
+====
+
+== 14. FAQ
+* *Do we need a server for MLflow?* No, the file backend is sufficient.  
+* *Where do we store large files?* Use DVC with a remote (S3/SSH/shared FS) or shared scratch.  
+* *Can we switch method mid-project?* Yes, with a clear justification in the report and reproducible runs.
