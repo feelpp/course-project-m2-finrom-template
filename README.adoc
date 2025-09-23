@@ -10,8 +10,8 @@ Build a **reproducible pipeline** to learn a **surrogate (ROM)** for the **2D th
 run an ensemble of cases on the cluster, aggregate results, train a model with **uncertainty**, and provide a small **inference CLI**.
 
 == Problem (minimal spec)
-Parameters latexmath:[$\mu=(k_1,k_2,k_3,k_4,\mathrm{Bi})$] with
-latexmath:[$k_i\in[0.1,10]$], latexmath:[$\mathrm{Bi}\in[0.01,1]$].
+Parameters latexmath:[\mu=(k_1,k_2,k_3,k_4,\mathrm{Bi})] with
+latexmath:[k_i\in[0.1,10]], latexmath:[\mathrm{Bi}\in[0.01,1]].
 Quantity of interest (QoI): latexmath:[$T_{\text{root}}(\mu)=\int_{\Gamma_{\text{root}}}u\,ds$].
 Default is **2D** (fast enough for N≈200–300); **3D** optional for demo/multi-fidelity (small N).
 
