@@ -6,20 +6,20 @@
 :page-tags: assignment, hpc, slurm, apptainer, docker, rom
 
 == Objective (very brief)
-Build a **reproducible pipeline** to learn a **surrogate (ROM)** for the **2D thermal fin**:
+Build a **reproducible pipeline** to learn a **surrogate (ROM)** for the **2D/3D thermal fin**:
 run an ensemble of cases on the cluster, aggregate results, train a model with **uncertainty**, and provide a small **inference CLI**.
 
 == Problem (minimal spec)
 Parameters latexmath:[\mu=(k_1,k_2,k_3,k_4,\mathrm{Bi})] with
 latexmath:[k_i\in[0.1,10]], latexmath:[\mathrm{Bi}\in[0.01,1]].
 Quantity of interest (QoI): latexmath:[$T_{\text{root}}(\mu)=\int_{\Gamma_{\text{root}}}u\,ds$].
-Default is **2D** (fast enough for N≈200–300); **3D** optional for demo/multi-fidelity (small N).
+Default is **2D** (fast enough for N≈200–300); **3D**  for demo/multi-fidelity (small N).
 
 == What you must deliver
 * **End-to-end pipeline**: Docker image published (GHCR) → **Apptainer** on the cluster → **Slurm array** (generation) → aggregation → training → evaluation.
-* **Surrogate with UQ**: baseline **Gaussian Process** provided. Per group you may choose **one primary method** (e.g., RF/XGB, SVR, MLP, PCE, RB).
+  * **Surrogate with UQ**: Per group you may choose **one primary method** (e.g., RF/XGB, MLP, PCE, GP).
 * **Traceability**: minimal run logs; (optional) MLflow or a simple CSV log of hyper-parameters and metrics.
-* **Inference CLI**: prints `mean` and `std` for a given parameter vector.
+* **Inference CLI**: given new parameter, prints `mean` and `std` for a given parameter vector.
 * **Short report (2–3 pages, in English)**: data, method, hyper-parameters, **RMSE/NLL**, **95% coverage**, timings (train/infer), limitations.
 * **Slides + short oral defense (in English)**.
 
@@ -33,9 +33,9 @@ Default is **2D** (fast enough for N≈200–300); **3D** optional for demo/mult
 == Technologies (short focus)
 * **Docker** (or Podman): simple Dockerfile + `.dockerignore`; tag `vX.Y.Z` → **GHCR**.
 * **Apptainer**: `apptainer pull docker://ghcr.io/ORG/REPO:tag` → user-space execution on the cluster.
-* **Slurm**: **job arrays** (`--array`) + dependencies `afterok` (for Gaia, adjust the `-p` partition, e.g., `barret`).
-* **Data**: **JSON lines** for per-case outputs, **CSV** for the aggregated training table (no Parquet, no BP).
-* **Code**: Python 3.11, scikit-learn, numpy/pandas, joblib (keep it simple).
+* **Slurm**: **job arrays** (`--array`) + dependencies `afterok` (for Gaya, adjust the `-p` partition, e.g., `public`).
+* **Data**: **JSON lines** for per-case outputs, **CSV** for the aggregated training table .
+* **Code**: Python >= 3.11, scikit-learn, numpy/pandas, joblib (keep it simple).
 * **Feel++** (recommended): replace the synthetic generator with a PDE solve computing latexmath:[$T_{\text{root}}$].
 * **Optional**: MLflow (file backend) or your own CSV log for runs; DVC is not required.
 
@@ -67,22 +67,37 @@ repo/
   README.adoc
 ----
 
-== Slurm starter (Gaia / adjust partition)
+== Slurm starter (Gaya / public )
 [source,bash]
 ----
 #!/bin/bash
-#SBATCH -J fin-gen
-#SBATCH --array=0-299
-#SBATCH -c 2
-#SBATCH -t 00:20:00
-#SBATCH -p barret           # <-- adjust to your Gaia partition
-module load apptainer
-IDX=${SLURM_ARRAY_TASK_ID}
-srun apptainer run app.sif \
-  python -m pipeline.generate.generate_point \
-    --params data/params.jsonl \
-    --index ${IDX} \
-    --out data/raw/case_${IDX}.json
+#SBATCH --job-name="course-project-feelpp-array"
+#SBATCH --array=1-20
+#SBATCH --ntasks=10
+#SBATCH --ntasks-per-node=10
+#SBATCH --cpus-per-task=1
+#SBATCH --output=rfm_job_%A_%a.out
+#SBATCH --error=rfm_job_%A_%a.err
+#SBATCH --exclusive
+#SBATCH --partition=public
+#SBATCH --threads-per-core=1
+#SBATCH --time=0-01:00:00
+
+
+source /etc/profile.d/modules.sh
+export PATH=/opt/apptainer/v1.4.0/apptainer/bin/:$PATH
+module load hpcx/2.14.0/gcc-9.3.0
+
+# Create unique directory name based on array task ID
+OUTPUT_DIR="2d-run-${SLURM_ARRAY_TASK_ID}"
+TASK_CONFIG_DIR="toolboxes/generator/cases/thermal_fin/task_${SLURM_ARRAY_TASK_ID}"
+CONFIG_FILE="thermal-fin-${SLURM_ARRAY_TASK_ID}.cfg"
+
+apptainer exec  \
+    --bind $PWD/toolboxes/generator/cases/thermal_fin:/data \
+    --bind $PWD/${TASK_CONFIG_DIR}:/config \
+    feelpp.sif \
+    mpirun -np $SLURM_NTASKS feelpp_toolbox_heat --config-file /config/${CONFIG_FILE} --directory=/data/${OUTPUT_DIR}
 ----
 [NOTE]
 ====
