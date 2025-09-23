@@ -119,7 +119,7 @@ sbatch hpc/train_array.sbatch
 sbatch hpc/evaluate.sbatch
 ----
 
-== Evaluation (condensed rubric)
+== Evaluation
 * **Engineering (20%)**: image, GHCR release, Apptainer, Slurm (array/deps).
 * **Data pipeline (15%)**: ensemble produced, CSV aggregation OK.
 * **Modeling (35%)**: stability, RMSE/NLL, **calibration** (95% coverage).
